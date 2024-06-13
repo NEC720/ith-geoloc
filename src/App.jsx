@@ -6,7 +6,7 @@ const App = () => {
 
   return (
     <div>
-      <button onClick={() => setClicked(true)}>Rechercher une pharmacie</button>
+      <button onClick={() => setClicked(true)}>Rechercher un emplacement</button>
       {clicked && <PharmaciesProximite />}
     </div>
   );

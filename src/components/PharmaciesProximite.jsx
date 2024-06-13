@@ -20,7 +20,7 @@ const currentLocationIcon = L.icon({
   shadowSize: [41, 41],
 });
 
-const nearestPharmacyIcon = L.icon({
+const nearestLocationIcon = L.icon({
   iconUrl:
     "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
   shadowUrl:
@@ -38,18 +38,15 @@ const defaultIcon = L.icon({
   iconAnchor: [12, 40],
 });
 
-var city, country = null;
-
 L.Marker.prototype.options.icon = defaultIcon;
 
 const PharmaciesProximite = () => {
   const [location, setLocation] = useState({ latitude: null, longitude: null });
   const [error, setError] = useState(null);
-  const [pharmacies, setPharmacies] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingPharmacies, setLoadingPharmacies] = useState(false);
-  const nearestPharmacyIndexRef = useRef(null); // Déclarer nearestPharmacyIndex en tant que référence
-  
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const nearestLocationIndexRef = useRef(null);
 
   useEffect(() => {
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -67,32 +64,17 @@ const PharmaciesProximite = () => {
       return distance;
     };
 
-    const getIP = async () => {
-      try {
-        const response = await axios.get("https://api.ipify.org?format=json");
-        console.log("Adresse IP:", response.data.ip);
-        const localisation = await axios.get("http://ip-api.com/json/" + response.data.ip);
-        city = localisation.data.city;
-        country = localisation.data.country;
-        console.log(localisation, city, country);
-      } catch (error) {
-        console.error("Erreur lors de la récupération de l'adresse IP:", error);
-        setError("Erreur lors de la récupération de l'adresse IP");
-      }
-    };
-
     const getLocation = () => {
       if (navigator.geolocation) {
         setLoading(true);
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            console.log(position, position.coords.latitude, position.coords.longitude);
             setLocation({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
             });
             setLoading(false);
-            getPharmacies(position.coords.latitude, position.coords.longitude);
+            getLocations(position.coords.latitude, position.coords.longitude);
           },
           (error) => {
             setLoading(false);
@@ -106,55 +88,49 @@ const PharmaciesProximite = () => {
       }
     };
 
-    const getPharmacies = async (latitude, longitude) => {
-      const radius = 1500; // en mètres
-      const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node(around:${radius},${latitude},${longitude})[amenity=pharmacy];out;`;
-
+    const getLocations = async (latitude, longitude) => {
       try {
-        setLoadingPharmacies(true);
-        const response = await axios.get(overpassUrl);
-        console.log("overpass-api : ", response);
-        const pharmaciesData = response.data.elements.map((pharmacy) => ({
-          id: pharmacy.id,
-          lat: pharmacy.lat,
-          lon: pharmacy.lon,
-          name: pharmacy.tags.name || "Pharmacie",
+        setLoadingLocations(true);
+        const response = await axios.get("/api/locations");                                         // Remplace par l'URL de ton serveur JSON
+        const locationsData = response.data.map((location) => ({
+          id: location.id,
+          lat: location.latitude,
+          lon: location.longitude,
+          name: location.name,
+          address: location.address,
         }));
 
-        // Trouver la pharmacie la plus proche
         let minDistance = Infinity;
 
-        pharmaciesData.forEach((pharmacy, index) => {
+        locationsData.forEach((location, index) => {
           const distance = calculateDistance(
             latitude,
             longitude,
-            pharmacy.lat,
-            pharmacy.lon
+            location.lat,
+            location.lon
           );
-          pharmacy.dist = distance;
-          console.log(pharmacy);
+          location.dist = distance;
           if (distance < minDistance) {
             minDistance = distance;
-            nearestPharmacyIndexRef.current = index; // Assigner la valeur à la référence
+            nearestLocationIndexRef.current = index;
           }
         });
 
-        setPharmacies(pharmaciesData);
-        setLoadingPharmacies(false);
+        setLocations(locationsData);
+        setLoadingLocations(false);
       } catch (error) {
-        console.error("Erreur lors de la récupération des pharmacies:", error);
-        setLoadingPharmacies(false);
-        setError("Erreur lors de la récupération des pharmacies");
+        console.error("Erreur lors de la récupération des lieux:", error);
+        setLoadingLocations(false);
+        setError("Erreur lors de la récupération des lieux");
       }
     };
 
-    getIP();
     getLocation();
   }, []);
 
   return (
     <div>
-      <h1>Pharmacies à Proximité</h1>
+      <h1>Lieux à Proximité</h1>
       {error && <p style={{ color: "red" }}>Erreur: {error}</p>}
       {loading ? (
         <p>Obtention de la position...</p>
@@ -177,19 +153,22 @@ const PharmaciesProximite = () => {
                 >
                   <Popup>Vous êtes ici</Popup>
                 </Marker>
-                {pharmacies.map((pharmacy, index) => (
+                {locations.map((location, index) => (
                   <Marker
-                    key={pharmacy.id}
-                    position={[pharmacy.lat, pharmacy.lon]}
+                    key={location.id}
+                    position={[location.lat, location.lon]}
                     icon={
-                      index === nearestPharmacyIndexRef.current
-                        ? nearestPharmacyIcon
+                      index === nearestLocationIndexRef.current
+                        ? nearestLocationIcon
                         : defaultIcon
                     }
                   >
                     <Popup>
-                      <img src="../images/pharma1.webp" alt="photo pharmacie" />
-                      {pharmacy.name}
+                      <strong>{location.name}</strong>
+                      <br />
+                      {location.address}
+                      <br />
+                      <b>Distance: {location.dist.toFixed(2)} km</b>
                     </Popup>
                   </Marker>
                 ))}
@@ -198,19 +177,16 @@ const PharmaciesProximite = () => {
               <p>Impossible d&apos;obtenir la position</p>
             )}
           </div>
-          {loadingPharmacies ? (
-            <p>Chargement des pharmacies...</p>
+          {loadingLocations ? (
+            <p>Chargement des lieux...</p>
           ) : (
             <ul>
-              {pharmacies.map(
-                (pharmacy) =>
-                  pharmacy.name != "Pharmacie" && (
-                    <li key={pharmacy.id}>
-                      <strong>{pharmacy.name}</strong> - {city}, {country}{" "}
-                      <b>&#40;{pharmacy.dist} km.&#41;</b>
-                    </li>
-                  )
-              )}
+              {locations.map((location) => (
+                <li key={location.id}>
+                  <strong>{location.name}</strong> - {location.address}{" "}
+                  <b>&#40; à {location.dist.toFixed(2)} km&#41;</b>
+                </li>
+              ))}
             </ul>
           )}
         </>
